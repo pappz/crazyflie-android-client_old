@@ -68,16 +68,18 @@ public class CrazyradioLink extends AbstractLink {
     private static PendingIntent mPermissionIntent;
 
     private static final String LOG_TAG = "Crazyflie_CrazyradioLink";
-
-    private final UsbDevice mUsbDevice;
+    
+    //TODO: Removed the "final". It is good idea?
+    private UsbDevice mUsbDevice;
     private UsbInterface mIntf;
     private UsbEndpoint mEpIn;
     private UsbEndpoint mEpOut;
     private UsbDeviceConnection mConnection;
 
     private Thread mRadioLinkThread;
-
-    private final BlockingDeque<CrtpPacket> mSendQueue;
+    
+    //TODO: Removed the "final". It is good idea?
+    private BlockingDeque<CrtpPacket> mSendQueue;
 
     public Param param;
     /**
@@ -110,7 +112,12 @@ public class CrazyradioLink extends AbstractLink {
      * @throws IllegalArgumentException if usbManager or usbDevice is <code>null</code>
      * @throws IOException if the device cannot be opened
      */
-    public CrazyradioLink(Context context, ConnectionData connectionData) throws IOException {
+
+    public CrazyradioLink() {
+    	param = new Param(this);
+    }
+
+	private void linkUp(Context context, ConnectionData connectionData) throws IOException {
         this.mUsbManager = (UsbManager) context.getSystemService(Context.USB_SERVICE);
         this.mUsbDevice = searchForCrazyradio(context, mUsbManager);
         if (mUsbManager == null || mUsbDevice == null) {
@@ -122,10 +129,8 @@ public class CrazyradioLink extends AbstractLink {
         setDataRate(connectionData.getDataRate());
 
         this.mSendQueue = new LinkedBlockingDeque<CrtpPacket>();
-
-        param = new Param(this);
     }
-
+	
     /**
      * Initialize the USB device. Determines endpoints and prepares
      * communication.
@@ -261,15 +266,19 @@ public class CrazyradioLink extends AbstractLink {
         }
         return result.toArray(new ConnectionData[result.size()]);
     }
-
+    
     /**
      * Connect to the Crazyflie.
      * 
+     * @param usbManager
+     * @param usbDevice
+     * @param connectionData connection data to initialize the link
      * @throws IllegalStateException if the Crazyradio is not attached
+     * @throws IOException 
      */
     @Override
-    public void connect() throws IllegalStateException {
-        Log.d(LOG_TAG, "connect()");
+    public void connect(Context context, ConnectionData connectionData) throws IllegalStateException, IOException {
+        linkUp(context, connectionData);
         notifyConnectionInitiated();
 
         if (mConnection != null) {
@@ -399,8 +408,7 @@ public class CrazyradioLink extends AbstractLink {
             int retryBeforeDisconnectRemaining = RETRYCOUNT_BEFORE_DISCONNECT;
             int nextLinkQualityUpdate = PACKETS_BETWEEN_LINK_QUALITY_UPDATE;
 
-            notifyConnectionSetupFinished();
-
+            notifyConnectionSetupFinished();            
             while (mConnection != null) {
                 try {
                     CrtpPacket p = mSendQueue.pollFirst(5, TimeUnit.MILLISECONDS);
@@ -410,8 +418,7 @@ public class CrazyradioLink extends AbstractLink {
 
                     byte[] receiveData = new byte[33];
                     final byte[] sendData = p.toByteArray();
-                    final int receivedByteCount = sendBulkTransfer(sendData, receiveData);
-                    
+                    final int receivedByteCount = sendBulkTransfer(sendData, receiveData);                    
                     //TODO: extract link quality calculation
                     if (receivedByteCount >= 1) {
                         // update link quality status
@@ -429,7 +436,7 @@ public class CrazyradioLink extends AbstractLink {
                         } else {
                             // count lost packets
                             retryBeforeDisconnectRemaining--;
-                            if (retryBeforeDisconnectRemaining <= 0) {
+                            if (retryBeforeDisconnectRemaining <= 0) {                            	
                                 notifyConnectionLost();
                                 disconnect();
                                 break;
@@ -459,8 +466,9 @@ public class CrazyradioLink extends AbstractLink {
         int returnCode = -1;
         if(mConnection != null){
             mConnection.bulkTransfer(mEpOut, data, data.length, TRANSFER_TIMEOUT);
-            returnCode = mConnection.bulkTransfer(mEpIn, receiveData, receiveData.length, TRANSFER_TIMEOUT);
+            returnCode = mConnection.bulkTransfer(mEpIn, receiveData, receiveData.length, TRANSFER_TIMEOUT);            
         }
+        //TODO: Why can get higher then 0 always??? 
         return returnCode;
     }
 

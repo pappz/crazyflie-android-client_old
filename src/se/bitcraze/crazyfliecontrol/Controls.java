@@ -1,5 +1,6 @@
 package se.bitcraze.crazyfliecontrol;
 
+import se.bitcraze.crazyflie.CrazyflieApp;
 import android.content.SharedPreferences;
 import android.content.res.Resources;
 import android.view.KeyEvent;
@@ -11,7 +12,7 @@ public class Controls {
     private MainActivity mActivity;
     private SharedPreferences mPreferences;
 
-    public static final int MAX_THRUST = 65535;
+    public final int MAX_THRUST = 65535;
     
     //Advanced flight control
     private int mMaxRollPitchAngle;
@@ -79,8 +80,9 @@ public class Controls {
                 //quick solution
                 //Todo: check this method
                 //resetAxisValues();
-                if (mActivity.getCrazyflieLink() != null) {
-                    mActivity.linkDisconnect();
+            	CrazyflieApp app = (CrazyflieApp) mActivity.getApplication();
+                if ( app.isConnected()) {
+                    app.linkDisconnect();
                 }
                 Toast.makeText(mActivity, "Emergency Stop", Toast.LENGTH_SHORT).show();
             }else if (event.getKeyCode() == mRollTrimPlusBtn) {

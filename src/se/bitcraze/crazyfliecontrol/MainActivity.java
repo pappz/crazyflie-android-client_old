@@ -27,29 +27,21 @@
 
 package se.bitcraze.crazyfliecontrol;
 
-import java.io.IOException;
 import java.util.Locale;
 
+import se.bitcraze.crazyflie.CrazyflieApp;
 import se.bitcraze.crazyfliecontrol.SelectConnectionDialogFragment.SelectCrazyflieDialogListener;
 import se.bitcraze.crazyfliecontrollers.*;
-import se.bitcraze.crazyflielib.ConnectionAdapter;
+import se.bitcraze.crazyflielib.ConnectionListener;
 import se.bitcraze.crazyflielib.CrazyradioLink;
 import se.bitcraze.crazyflielib.CrazyradioLink.ConnectionData;
 import se.bitcraze.crazyflielib.Link;
-import se.bitcraze.crazyflielib.crtp.CommanderPacket;
 import android.app.Activity;
 import android.app.ProgressDialog;
-import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
-import android.hardware.usb.UsbDevice;
-import android.hardware.usb.UsbManager;
-import android.media.AudioManager;
-import android.media.SoundPool;
-import android.media.SoundPool.OnLoadCompleteListener;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -69,85 +61,36 @@ import android.hardware.SensorManager;
 
 import com.MobileAnarchy.Android.Widgets.Joystick.DualJoystickView;
 
-public class MainActivity extends Activity implements FlyingDataEvent, OnCheckedChangeListener {
+public class MainActivity extends Activity implements FlyingDataEvent, OnCheckedChangeListener, ConnectionListener {
+	private static final String TAG = "Crazyflie.Activity";    
 
-    private static final String TAG = "CrazyflieControl";
-   
-    private Controller controller;
     private FlightDataView mFlightDataView;
+    private boolean mDoubleBackToExitPressedOnce = false;    
+    private String[] datarateStrings;
+    private Controller controller;
+    private Controls mControls;    
+    protected CrazyflieApp crazyflieApp;
 
-    private CrazyradioLink mCrazyradioLink;
-
-    private SharedPreferences mPreferences;
-
-    private String mRadioChannelDefaultValue;
-    private String mRadioDatarateDefaultValue;
-
-    private boolean mDoubleBackToExitPressedOnce = false;
-
-    private Thread mSendJoystickDataThread;
-
-    private String[] mDatarateStrings;
-
-    private Controls mControls;
-
-    private SoundPool mSoundPool;
-    private boolean mLoaded;
-    private int mSoundConnect;
-    private int mSoundDisconnect;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
-
-        setDefaultPreferenceValues();
-
-        mControls = new Controls(this, mPreferences);
+        setContentView(R.layout.activity_main);        
+        crazyflieApp = (CrazyflieApp) getApplication();        
+        
+        datarateStrings = getResources().getStringArray(R.array.radioDatarateEntries);
+        mControls = new Controls(this, crazyflieApp.getPreferences());
         mControls.setDefaultPreferenceValues(getResources());
 
         
         mFlightDataView = (FlightDataView) findViewById(R.id.flightdataview);
 
-        ((ToggleButton) findViewById(R.id.hovermode)).setOnCheckedChangeListener(this);
-
-        IntentFilter filter = new IntentFilter();
-        filter.addAction(this.getPackageName()+".USB_PERMISSION");
-        filter.addAction(UsbManager.ACTION_USB_DEVICE_ATTACHED);
-        filter.addAction(UsbManager.ACTION_USB_DEVICE_DETACHED);
-        registerReceiver(mUsbReceiver, filter);
-
-        initializeSounds();
+        ((ToggleButton) findViewById(R.id.hovermode)).setOnCheckedChangeListener(this);        
     }
 
-    private void initializeSounds() {
-        this.setVolumeControlStream(AudioManager.STREAM_MUSIC);
-        // Load sounds
-        mSoundPool = new SoundPool(10, AudioManager.STREAM_MUSIC, 0);
-        mSoundPool.setOnLoadCompleteListener(new OnLoadCompleteListener() {
-            @Override
-            public void onLoadComplete(SoundPool soundPool, int sampleId, int status) {
-                mLoaded = true;
-            }
-        });
-        mSoundConnect = mSoundPool.load(this, R.raw.proxima, 1);
-        mSoundDisconnect = mSoundPool.load(this, R.raw.tejat, 1);
-    }
-
-    private void setDefaultPreferenceValues(){
-        // Set default preference values
-        PreferenceManager.setDefaultValues(this, R.xml.preferences, false);
-        // Initialize preferences
-        mPreferences = PreferenceManager.getDefaultSharedPreferences(this);
-
-        mRadioChannelDefaultValue = getString(R.string.preferences_radio_channel_defaultValue);
-        mRadioDatarateDefaultValue = getString(R.string.preferences_radio_datarate_defaultValue);
-
-        mDatarateStrings = getResources().getStringArray(R.array.radioDatarateEntries);
-    }
 
     private void checkScreenLock() {
-        boolean isScreenLock = mPreferences.getBoolean(PreferencesActivity.KEY_PREF_SCREEN_ROTATION_LOCK_BOOL, false);
+        boolean isScreenLock = crazyflieApp.getPreferences().getBoolean(PreferencesActivity.KEY_PREF_SCREEN_ROTATION_LOCK_BOOL, false);
         if(isScreenLock){
             this.setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         }else{
@@ -166,13 +109,13 @@ public class MainActivity extends Activity implements FlyingDataEvent, OnChecked
         switch (item.getItemId()) {
             case R.id.menu_connect:
                 try {
-                    linkConnect();
+                	crazyflieApp.linkConnect();                	
                 } catch (IllegalStateException e) {
                     Toast.makeText(this, e.getMessage(), Toast.LENGTH_SHORT).show();
                 }
                 break;
             case R.id.menu_disconnect:
-                linkDisconnect();
+            	crazyflieApp.linkDisconnect();
                 break;
             case R.id.menu_radio_scan:
                 radioScan();
@@ -188,7 +131,8 @@ public class MainActivity extends Activity implements FlyingDataEvent, OnChecked
     @Override
     public void onResume() {
         super.onResume();
-        mControls.setControlConfig();
+        crazyflieApp.addConnectionListener(this);
+        mControls.setControlConfig();        
         Log.d("Chopter: ","in on resume and the mod is"+Integer.toString(mControls.getMode()));
         switch(mControls.getMode()){
             case(0):
@@ -211,8 +155,8 @@ public class MainActivity extends Activity implements FlyingDataEvent, OnChecked
                 break;
         }
 
-        controller.setOnFlyingDataListener(this);
-        controller.enable();
+        controller.setOnFlyingDataListener(this);        
+        crazyflieApp.setController(controller, mControls.getXmode());
         checkScreenLock();
     }
 
@@ -225,20 +169,11 @@ public class MainActivity extends Activity implements FlyingDataEvent, OnChecked
     @Override
     protected void onPause() {
         super.onPause();
-        if (mCrazyradioLink != null) {
-            linkDisconnect();
-        }
+        crazyflieApp.linkDisconnect();    
+        crazyflieApp.removeConnectionListener(this);
         controller.disable();
     }
-
-    @Override
-    protected void onDestroy() {
-        unregisterReceiver(mUsbReceiver);
-        mSoundPool.release();
-        mSoundPool = null;
-        super.onDestroy();
-    }
-
+    
     @Override
     public void onBackPressed() {
         if (mDoubleBackToExitPressedOnce) {
@@ -284,169 +219,15 @@ public class MainActivity extends Activity implements FlyingDataEvent, OnChecked
 
     private void setRadioChannelAndDatarate(int channel, int datarate) {
         if (channel != -1 && datarate != -1) {
-            SharedPreferences.Editor editor = mPreferences.edit();
+            SharedPreferences.Editor editor = PreferenceManager.getDefaultSharedPreferences(this).edit();
             editor.putString(PreferencesActivity.KEY_PREF_RADIO_CHANNEL, String.valueOf(channel));
             editor.putString(PreferencesActivity.KEY_PREF_RADIO_DATARATE, String.valueOf(datarate));
             editor.commit();
 
-            Toast.makeText(this,"Channel: " + channel + " Data rate: " + mDatarateStrings[datarate] + "\nSetting preferences...", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this,"Channel: " + channel + " Data rate: " + datarateStrings[datarate] + "\nSetting preferences...", Toast.LENGTH_SHORT).show();
         }
-    }
-
-    private final BroadcastReceiver mUsbReceiver = new BroadcastReceiver() {
-
-        public void onReceive(Context context, Intent intent) {
-            String action = intent.getAction();
-            Log.d(TAG, "mUsbReceiver action: " + action);
-            if ((MainActivity.this.getPackageName()+".USB_PERMISSION").equals(action)) {
-                //reached only when USB permission on physical connect was canceled and "Connect" or "Radio Scan" is clicked
-                synchronized (this) {
-                    UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                    if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                        if (device != null) {
-                            Toast.makeText(MainActivity.this, "Crazyradio attached", Toast.LENGTH_SHORT).show();
-                        }
-                    } else {
-                        Log.d(TAG, "permission denied for device " + device);
-                    }
-                }
-            }
-            if (UsbManager.ACTION_USB_DEVICE_DETACHED.equals(action)) {
-                UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                if (device != null && CrazyradioLink.isCrazyradio(device)) {
-                    Log.d(TAG, "Crazyradio detached");
-                    Toast.makeText(MainActivity.this, "Crazyradio detached", Toast.LENGTH_SHORT).show();
-                    playSound(mSoundDisconnect);
-                    if (mCrazyradioLink != null) {
-                        Log.d(TAG, "linkDisconnect()");
-                        linkDisconnect();
-                    }
-                }
-            }
-            if (UsbManager.ACTION_USB_DEVICE_ATTACHED.equals(action)) {
-                UsbDevice device = (UsbDevice) intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                if (device != null && CrazyradioLink.isCrazyradio(device)) {
-                    Log.d(TAG, "Crazyradio attached");
-                    Toast.makeText(MainActivity.this, "Crazyradio attached", Toast.LENGTH_SHORT).show();
-                    playSound(mSoundConnect);
-                }
-            }
-        }
-    };
-
-    private void playSound(int sound){
-        if (mLoaded) {
-            float volume = 1.0f;
-            mSoundPool.play(sound, volume, volume, 1, 0, 1f);
-        }
-    }
-
-    private void linkConnect() {
-        // ensure previous link is disconnected
-        linkDisconnect();
-
-        int radioChannel = Integer.parseInt(mPreferences.getString(PreferencesActivity.KEY_PREF_RADIO_CHANNEL, mRadioChannelDefaultValue));
-        int radioDatarate = Integer.parseInt(mPreferences.getString(PreferencesActivity.KEY_PREF_RADIO_DATARATE, mRadioDatarateDefaultValue));
-
-        try {
-            // create link
-            mCrazyradioLink = new CrazyradioLink(this, new CrazyradioLink.ConnectionData(radioChannel, radioDatarate));
-
-            // add listener for connection status
-            mCrazyradioLink.addConnectionListener(new ConnectionAdapter() {
-                @Override
-                public void connectionSetupFinished(Link l) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(getApplicationContext(), "Connected", Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                }
-
-                @Override
-                public void connectionLost(Link l) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(getApplicationContext(), "Connection lost", Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                    linkDisconnect();
-                }
-
-                @Override
-                public void connectionFailed(Link l) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            Toast.makeText(getApplicationContext(), "Connection failed", Toast.LENGTH_SHORT).show();
-                        }
-                    });
-                    linkDisconnect();
-                }
-
-                @Override
-                public void linkQualityUpdate(Link l, final int quality) {
-                    runOnUiThread(new Runnable() {
-                        @Override
-                        public void run() {
-                            mFlightDataView.setLinkQualityText(quality + "%");
-                        }
-                    });
-                }
-            });
-
-            // connect and start thread to periodically send commands containing
-            // the user input
-            mCrazyradioLink.connect();
-            mSendJoystickDataThread = new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    while (mCrazyradioLink != null) {
-                        mCrazyradioLink.send(new CommanderPacket(controller.getRoll(), controller.getPitch(), controller.getYaw(), (char) (controller.getThrust()), mControls.getXmode()));
-                        
-                        try {
-                            Thread.sleep(20, 0);
-                        } catch (InterruptedException e) {
-                            break;
-                        }
-                    }
-                }
-            });
-            mSendJoystickDataThread.start();
-        } catch (IllegalArgumentException e) {
-            Log.d(TAG, e.getMessage());
-            Toast.makeText(this, "Crazyradio not attached", Toast.LENGTH_SHORT).show();
-        } catch (IOException e) {
-            Log.e(TAG, e.getMessage());
-            Toast.makeText(this, e.getMessage(), Toast.LENGTH_SHORT).show();
-        }
-    }
-
-    public Link getCrazyflieLink(){
-        return mCrazyradioLink;
-    }
+    }   
     
-    public void linkDisconnect() {
-        if (mCrazyradioLink != null) {
-            mCrazyradioLink.disconnect();
-            mCrazyradioLink = null;
-        }
-        if (mSendJoystickDataThread != null) {
-            mSendJoystickDataThread.interrupt();
-            mSendJoystickDataThread = null;
-        }
-        
-        runOnUiThread(new Runnable() {
-            @Override
-            public void run() {
-                // link quality is not available when there is no active connection
-                mFlightDataView.setLinkQualityText("n/a");
-            }
-        });
-    }
-
     private void radioScan() {
         new AsyncTask<Void, Void, ConnectionData[]>() {
 
@@ -498,7 +279,7 @@ public class MainActivity extends Activity implements FlyingDataEvent, OnChecked
         Bundle args = new Bundle();
         String[] crazyflieArray = new String[result.length];
         for(int i = 0; i < result.length; i++){
-            crazyflieArray[i] = i + ": Channel " + result[i].getChannel() + ", Data rate " + mDatarateStrings[result[i].getDataRate()];
+            crazyflieArray[i] = i + ": Channel " + result[i].getChannel() + ", Data rate " + datarateStrings[result[i].getDataRate()];
         }
         args.putStringArray("connection_array", crazyflieArray);
         selectConnectionDialogFragment.setArguments(args);
@@ -513,16 +294,80 @@ public class MainActivity extends Activity implements FlyingDataEvent, OnChecked
 
 
 	@Override
-	public void flyingDataEvent(float pitch, float roll, float thrust, float yaw) {
+	public void flyingDataEvent(float pitch, float roll, float thrust, float yaw) {		
 		mFlightDataView.updateFlightData(pitch, roll, thrust, yaw);
 	}
 
+	
+	//Botton listener
 	@Override
 	public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-		if(mCrazyradioLink != null) {
-				mCrazyradioLink.param.setHoverMode(isChecked);
+		if(crazyflieApp.isConnected()) {
+			//TODO: implement the properly hover mode.
+			crazyflieApp.setHoverMode(isChecked);
 		} else {
 			((ToggleButton) findViewById(R.id.hovermode)).setChecked(false);
 		}
+	}
+
+	//ConnectionListener
+    @Override
+    public void connectionSetupFinished(final Link l) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+            	Toast.makeText(getApplicationContext(), "Connection Setup finished", Toast.LENGTH_SHORT).show();            
+            }
+        });
+        controller.enable();
+    }
+
+    @Override
+    public void connectionLost(Link l) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(getApplicationContext(), "Connection lost", Toast.LENGTH_SHORT).show();
+            }
+        });
+        controller.disable();
+    }
+
+    @Override
+    public void connectionFailed(Link l) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(getApplicationContext(), "Connection failed", Toast.LENGTH_SHORT).show();
+            }
+        });
+        controller.disable();
+    }
+
+    @Override
+    public void linkQualityUpdate(Link l, final int quality) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                mFlightDataView.setLinkQualityText(quality + "%");
+            }
+        });
+    }
+
+	@Override
+	public void connectionInitiated(Link l) {
+	
+	}
+
+	@Override
+	public void disconnected(Link l) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                // link quality is not available when there is no active connection
+                mFlightDataView.setLinkQualityText("n/a");
+            }
+        });
+        controller.disable();	
 	}
 }

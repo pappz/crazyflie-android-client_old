@@ -1,6 +1,10 @@
 
 package se.bitcraze.crazyflielib;
 
+import java.io.IOException;
+
+import android.content.Context;
+import se.bitcraze.crazyflielib.CrazyradioLink.ConnectionData;
 import se.bitcraze.crazyflielib.crtp.CrtpPacket;
 
 /**
@@ -9,9 +13,10 @@ import se.bitcraze.crazyflielib.crtp.CrtpPacket;
 public interface Link {
     /**
      * Connect to the Crazyflie.
+     * @throws IOException 
      */
-    public void connect();
-
+	void connect(Context context, ConnectionData connectionData)
+			throws IllegalStateException, IOException;
     /**
      * Disconnect from the Crazyflie.
      */

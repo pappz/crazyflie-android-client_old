@@ -5,7 +5,6 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.util.Log;
 
 import com.MobileAnarchy.Android.Widgets.Joystick.DualJoystickView;
 import com.MobileAnarchy.Android.Widgets.Joystick.JoystickMovedListener;
@@ -21,7 +20,6 @@ public class Gyroscope extends Controller implements SensorEventListener {
         this.joystickView = dualJoystickView;
         this.joystickView.setMovementRange(resolution, resolution);
         mSensorManager = sensorManager;
-        Log.d("e: ","inited");
     }
 
     @Override
@@ -45,7 +43,7 @@ public class Gyroscope extends Controller implements SensorEventListener {
     public void onSensorChanged(SensorEvent event) {
         // amplifying the sensitivity.    	
         pitch = (event.values[0] / 10 ) * -1;
-        roll = event.values[1] / 10;       
+        roll = event.values[1] / 10;
         updateFlightData();
     }
 
