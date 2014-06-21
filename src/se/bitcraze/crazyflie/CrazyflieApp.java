@@ -79,7 +79,13 @@ public class CrazyflieApp extends Application {
                 @Override
                 public void run() {
                     while (crazyradioLink.isConnected()) {
-                    	crazyradioLink.send(new CommanderPacket(controller.getRoll(), controller.getPitch(), controller.getYaw(), (char) (controller.getThrust()), xmode));                        
+                    	float thrust;
+                    	if(!hover) {
+                    		thrust = controller.getThrust();
+                    	} else {
+                    		thrust = 32767;
+                    	}
+                    	crazyradioLink.send(new CommanderPacket(controller.getRoll(), controller.getPitch(), controller.getYaw(), (char) thrust, xmode));                        
                         try {
                             Thread.sleep(20, 0);
                         } catch (InterruptedException e) {
@@ -112,6 +118,7 @@ public class CrazyflieApp extends Application {
 	}
 
 	public void setHoverMode(boolean isChecked) {
+		crazyradioLink.param.setHoverMode(isChecked);
 		hover = isChecked;
 	}	
 }
