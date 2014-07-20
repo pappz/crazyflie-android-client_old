@@ -116,9 +116,4 @@ public class CrazyflieApp extends Application {
 	public boolean isConnected() {
 		return crazyradioLink.isConnected();		
 	}
-
-	public void setHoverMode(boolean isChecked) {
-		crazyradioLink.param.setHoverMode(isChecked);
-		hover = isChecked;
-	}	
 }

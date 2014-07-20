@@ -81,7 +81,6 @@ public class CrazyradioLink extends AbstractLink {
     //TODO: Removed the "final". It is good idea?
     private BlockingDeque<CrtpPacket> mSendQueue;
 
-    public Param param;
     /**
      * Holds information about a specific connection.
      */
@@ -112,10 +111,6 @@ public class CrazyradioLink extends AbstractLink {
      * @throws IllegalArgumentException if usbManager or usbDevice is <code>null</code>
      * @throws IOException if the device cannot be opened
      */
-
-    public CrazyradioLink() {
-    	param = new Param(this);
-    }
 
 	private void linkUp(Context context, ConnectionData connectionData) throws IOException {
         this.mUsbManager = (UsbManager) context.getSystemService(Context.USB_SERVICE);
